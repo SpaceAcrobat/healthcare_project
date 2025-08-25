@@ -27,9 +27,9 @@ class APISmokeTest(APITestCase):
         patient_id = resp.data['id']
 
         # Map
-        resp = self.client.post('/api/mappings/', {'patient': patient_id, 'doctor': doctor_id}, format='json')
+        resp = self.client.post('/api/assignments/', {'patient_id': patient_id, 'doctor_id': doctor_id}, format='json')
         self.assertIn(resp.status_code, (status.HTTP_200_OK, status.HTTP_201_CREATED))
 
         # List mappings by patient
-        resp = self.client.get(f'/api/mappings/patient/{patient_id}/')
+        resp = self.client.get(f'/api/assignments/by_patient/?patient_id={patient_id}')
         self.assertEqual(resp.status_code, status.HTTP_200_OK)

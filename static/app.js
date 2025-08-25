@@ -1,324 +1,431 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const API_BASE = 'http://127.0.0.1:8000/api';
-    let token = localStorage.getItem('accessToken');
-    let patientsData = [];
-    let doctorsData = [];
-
-    // Views
-    const authView = document.getElementById('auth-view');
-    const dashboardView = document.getElementById('dashboard-view');
-
-    // Forms & Buttons
-    const loginForm = document.getElementById('login-form');
-    const registerForm = document.getElementById('register-form');
-    const toggleAuthLink = document.getElementById('toggle-auth');
-    const logoutButton = document.getElementById('logout-button');
     
-    // Modals & Forms
-    const patientModal = document.getElementById('patient-modal');
-    const doctorModal = document.getElementById('doctor-modal');
-    const addPatientBtn = document.getElementById('add-patient-btn');
-    const addDoctorBtn = document.getElementById('add-doctor-btn');
-    const patientForm = document.getElementById('patient-form');
-    const doctorForm = document.getElementById('doctor-form');
+    // Application State
+    const state = {
+        token: localStorage.getItem('accessToken'),
+        patients: [],
+        allDoctors: [],
+        recommendedDoctors: [],
+        currentDoctorId: null,
+    };
 
-
-    // Data Display
-    const patientsList = document.getElementById('patients-list');
-    const doctorsList = document.getElementById('doctors-list');
-    const welcomeMessage = document.getElementById('welcome-message');
-
-    // --- API Request Helper ---
-    async function apiRequest(endpoint, method = 'GET', body = null) {
-        const headers = {
-            'Content-Type': 'application/json',
-        };
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
-        const config = {
-            method,
-            headers,
-        };
-
-        if (body) {
-            config.body = JSON.stringify(body);
-        }
-
-        try {
-            const response = await fetch(API_BASE + endpoint, config);
+    // API Layer: Handles all communication with the backend
+    const api = {
+        _baseUrl: 'http://127.0.0.1:8000/api',
+        
+        async _request(endpoint, method = "GET", body = null) {
+            const headers = { "Content-Type": "application/json" };
+            if (state.token) {
+                headers["Authorization"] = `Bearer ${state.token}`;
+            }
+            const response = await fetch(`${this._baseUrl}${endpoint}`, {
+                method,
+                headers,
+                body: body ? JSON.stringify(body) : null,
+            });
             if (!response.ok) {
-                if (response.status === 401) {
-                    handleLogout();
+                let errorMsg;
+                try { errorMsg = await response.json(); } 
+                catch {
+                    const text = await response.text();
+                    errorMsg = { detail: `Server returned a non-JSON response. Status: ${response.status}. Body: ${text.substring(0, 200)}...` };
                 }
-                const errorData = await response.json();
-                throw new Error(JSON.stringify(errorData));
+                throw errorMsg;
             }
-            if (response.status === 204) {
-                return null;
-            }
-            return await response.json();
-        } catch (error) {
-            console.error('API Request Error:', error);
-            alert('An error occurred: ' + error.message);
-            return null;
-        }
-    }
+            return response.status === 204 ? null : response.json();
+        },
 
-    // --- UI Rendering ---
-    function showView(view) {
-        authView.classList.add('hidden');
-        dashboardView.classList.add('hidden');
-        if (view === 'auth') {
-            authView.classList.remove('hidden');
-        } else {
-            dashboardView.classList.remove('hidden');
-        }
-    }
-    
-    function renderPatients(patients) {
-        patientsList.innerHTML = '';
-        if (!patients || patients.length === 0) {
-            patientsList.innerHTML = `<p class="text-gray-500">No patients found. Add one to get started!</p>`;
-            return;
-        }
-        patients.forEach(p => {
-            const card = document.createElement('div');
-            card.className = 'bg-white p-4 rounded-lg shadow card';
-            card.innerHTML = `
-                <div class="flex justify-between items-start">
-                    <div>
-                        <h3 class="font-semibold text-lg">${p.name}</h3>
-                        <p class="text-sm text-gray-600">Age: ${p.age}, Gender: ${p.gender}</p>
-                        <p class="text-sm text-gray-500">${p.address || ''}</p>
-                    </div>
-                    <div class="flex space-x-2">
-                        <button data-id="${p.id}" class="edit-patient-btn text-sm text-blue-500 hover:underline">Edit</button>
-                        <button data-id="${p.id}" class="delete-patient-btn text-sm text-red-500 hover:underline">Delete</button>
-                    </div>
-                </div>
-            `;
-            patientsList.appendChild(card);
-        });
-    }
+        login: (username, password) => api._request('/auth/login/', 'POST', { username, password }),
+        register: (userData) => api._request('/auth/register/', 'POST', userData),
+        getPatients: () => api._request('/patients/'),
+        getDoctors: () => api._request('/doctors/'),
+        addPatient: (patientData) => api._request('/patients/', 'POST', patientData),
+        getRecommendations: (symptoms) => api._request('/symptom-checker/', 'POST', { symptoms }),
+        createAssignment: (patientId, doctorId) => api._request("/mappings/", "POST", { patient_id: patientId, doctor_id: doctorId }),
+        deleteAssignment: (assignmentId) => api._request(`/mappings/${assignmentId}/`, 'DELETE'),
+    };
 
-    function renderDoctors(doctors) {
-        doctorsList.innerHTML = '';
-         if (!doctors || doctors.length === 0) {
-            doctorsList.innerHTML = `<p class="text-gray-500">No doctors found.</p>`;
-            return;
-        }
-        doctors.forEach(d => {
-            const card = document.createElement('div');
-            card.className = 'bg-white p-4 rounded-lg shadow card';
-            card.innerHTML = `
-                 <div class="flex justify-between items-start">
-                    <div>
-                        <h3 class="font-semibold text-lg">Dr. ${d.name}</h3>
-                        <p class="text-sm text-gray-600">${d.specialization}</p>
-                        <p class="text-sm text-gray-500">${d.email}</p>
-                    </div>
-                    <div class="flex space-x-2">
-                        <button data-id="${d.id}" class="edit-doctor-btn text-sm text-blue-500 hover:underline">Edit</button>
-                        <button data-id="${d.id}" class="delete-doctor-btn text-sm text-red-500 hover:underline">Delete</button>
-                    </div>
-                </div>
-            `;
-            doctorsList.appendChild(card);
-        });
-    }
+    // UI Layer: Handles all DOM manipulation and rendering
+    const ui = {
+        elements: {
+            authView: document.getElementById('auth-view'),
+            dashboardView: document.getElementById('dashboard-view'),
+            loginForm: document.getElementById('login-form'),
+            registerForm: document.getElementById('register-form'),
+            patientsList: document.getElementById('patients-list'),
+            logoutButton: document.getElementById('logout-button'),
+            addPatientBtn: document.getElementById('add-patient-btn'),
+            addPatientModal: document.getElementById('add-patient-modal'),
+            patientForm: document.getElementById('patient-form'),
+            symptomForm: document.getElementById('symptom-form'),
+            toggleAuthLink: document.getElementById('toggle-auth'),
+            welcomeView: document.getElementById('welcome-view'),
+            doctorRecommendationsView: document.getElementById('doctor-recommendations-view'),
+            recommendedDoctorsList: document.getElementById('recommended-doctors-list'),
+            assignDoctorModal: document.getElementById('assign-doctor-modal'),
+            assignDoctorList: document.getElementById('assign-doctors-list'),
+            analyzeBtnText: document.getElementById('analyze-btn-text'),
+            analyzeSpinner: document.getElementById('analyze-spinner'),
+            toastContainer: document.getElementById('toast-container'),
+            doctorDetailModal: document.getElementById('doctor-detail-modal'),
+            patientDetailModal: document.getElementById('patient-detail-modal'),
+            assignFromDoctorBtn: document.getElementById('assign-from-doctor-btn'),
+            patientSelectDropdown: document.getElementById('patient-select-dropdown'),
+            resetViewBtn: document.getElementById('reset-view-btn'), // New selector
+        },
 
-    // --- Data Fetching and Display ---
-    async function loadDashboard() {
-        if (!token) {
-            showView('auth');
-            return;
-        }
-        showView('dashboard');
-        welcomeMessage.textContent = `Welcome back, ${localStorage.getItem('username')}!`;
+        showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            const bgColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
+            toast.className = `toast ${bgColor} text-white p-4 rounded-lg shadow-lg mb-2`;
+            toast.textContent = message;
+            this.elements.toastContainer.appendChild(toast);
+            setTimeout(() => toast.classList.add('show'), 100);
+            setTimeout(() => {
+                toast.classList.remove('show');
+                toast.addEventListener('transitionend', () => toast.remove());
+            }, 3000);
+        },
         
-        const [patients, doctors] = await Promise.all([
-            apiRequest('/patients/'),
-            apiRequest('/doctors/')
-        ]);
+        toggleAuthForms() {
+            const { loginForm, registerForm, toggleAuthLink } = this.elements;
+            const isLoginHidden = loginForm.classList.contains('hidden');
+            loginForm.classList.toggle('hidden', !isLoginHidden);
+            registerForm.classList.toggle('hidden', isLoginHidden);
+            document.getElementById('auth-title').textContent = isLoginHidden ? 'Login' : 'Register';
+            document.getElementById('auth-subtitle').textContent = isLoginHidden ? 'Welcome back!' : 'Create a new account.';
+            toggleAuthLink.textContent = isLoginHidden ? "Don't have an account? Register" : 'Already have an account? Login';
+        },
 
-        if (patients) {
-            patientsData = patients.results;
-            renderPatients(patientsData);
-        }
-        if (doctors) {
-            doctorsData = doctors.results;
-            renderDoctors(doctorsData);
-        }
-    }
+        showDashboard(shouldShow) {
+            this.elements.authView.classList.toggle('hidden', shouldShow);
+            this.elements.dashboardView.classList.toggle('hidden', !shouldShow);
+        },
 
-    // --- Event Handlers ---
-    function handleLogout() {
-        token = null;
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('username');
-        showView('auth');
-    }
+        // UPGRADE: This function now handles both overall and filtered stats
+        updateDashboardStats(filteredDoctors = null) {
+            const doctorList = filteredDoctors || state.allDoctors;
+            const doctorIds = new Set(doctorList.map(d => d.id));
+            
+            let relevantAssignments = 0;
+            state.patients.forEach(patient => {
+                patient.assignments.forEach(assignment => {
+                    if (doctorIds.has(assignment.doctor.id)) {
+                        relevantAssignments++;
+                    }
+                });
+            });
 
-    loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const username = document.getElementById('login-username').value;
-        const password = document.getElementById('login-password').value;
-        const data = await apiRequest('/auth/login/', 'POST', { username, password });
-        if (data && data.access) {
-            token = data.access;
-            localStorage.setItem('accessToken', token);
-            localStorage.setItem('username', username);
-            loadDashboard();
-        }
-    });
+            document.getElementById('total-patients-stat').textContent = state.patients.length;
+            document.getElementById('total-doctors-stat').textContent = doctorList.length;
+            document.getElementById('total-assignments-stat').textContent = relevantAssignments;
+        },
 
-    registerForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const username = document.getElementById('reg-username').value;
-        const email = document.getElementById('reg-email').value;
-        const password = document.getElementById('reg-password').value;
-        const data = await apiRequest('/auth/register/', 'POST', { username, email, password });
-        if (data) {
-            alert('Registration successful! Please log in.');
-            toggleAuthForms();
-        }
-    });
-    
-    patientForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const patientId = document.getElementById('patient-id').value;
-        const patientData = {
-            name: document.getElementById('patient-name').value,
-            age: document.getElementById('patient-age').value,
-            gender: document.getElementById('patient-gender').value,
-            address: document.getElementById('patient-address').value,
-        };
+        renderPatients() {
+            this.elements.patientsList.innerHTML = '';
+            if (!state.patients || state.patients.length === 0) {
+                this.elements.patientsList.innerHTML = '<p class="text-gray-500">No patients found. Add one to get started!</p>';
+                return;
+            }
+            state.patients.forEach(patient => {
+                let assignedDoctorsHtml = '<p class="text-sm text-gray-500">No doctor assigned.</p>';
+                if (patient.assignments && patient.assignments.length > 0) {
+                    assignedDoctorsHtml = patient.assignments.map(a => `
+                        <div class="flex items-center justify-between mt-2 p-2 bg-indigo-50 rounded-md">
+                            <span class="text-indigo-800 font-semibold">${a.doctor.name}</span>
+                            <button class="unassign-btn text-red-500 hover:text-red-700 font-bold" data-assignment-id="${a.id}" title="Unassign Doctor">×</button>
+                        </div>`).join('');
+                }
+                const patientCard = document.createElement('div');
+                patientCard.className = "p-4 bg-white border rounded-lg mb-2 shadow-sm";
+                patientCard.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h3 class="font-semibold text-lg cursor-pointer hover:text-indigo-600 patient-name" data-patient-id="${patient.id}">${patient.name}</h3>
+                            <p class="text-sm text-gray-600">${patient.age}, ${patient.gender}</p>
+                        </div>
+                        <button class="assign-btn bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 transition" data-patient-id="${patient.id}" data-patient-name="${patient.name}">Assign Doctor</button>
+                    </div>
+                    <div class="mt-4"><h4 class="font-semibold text-sm">Assigned Doctor(s):</h4>${assignedDoctorsHtml}</div>`;
+                this.elements.patientsList.appendChild(patientCard);
+            });
+            App.setupPatientCardListeners();
+        },
 
-        const method = patientId ? 'PUT' : 'POST';
-        const endpoint = patientId ? `/patients/${patientId}/` : '/patients/';
+        renderRecommendedDoctors() {
+            this.elements.recommendedDoctorsList.innerHTML = '';
+            if (!state.recommendedDoctors || state.recommendedDoctors.length === 0) {
+                this.elements.recommendedDoctorsList.innerHTML = '<p class="text-gray-500">No doctors match the recommendation.</p>';
+            } else {
+                state.recommendedDoctors.forEach(doctor => {
+                    const div = document.createElement('div');
+                    div.className = "p-4 bg-white border rounded-lg mb-2 shadow-sm cursor-pointer hover:bg-gray-50 doctor-name";
+                    div.setAttribute('data-doctor-id', doctor.id);
+                    div.innerHTML = `<span class="font-bold text-lg">${doctor.name}</span> - <span class="text-gray-700">${doctor.specialization}</span>`;
+                    this.elements.recommendedDoctorsList.appendChild(div);
+                });
+            }
+            this.elements.welcomeView.classList.add('hidden');
+            this.elements.doctorRecommendationsView.classList.remove('hidden');
+            App.setupDoctorCardListeners();
+        },
         
-        const result = await apiRequest(endpoint, method, patientData);
-        if (result) {
-            closeAllModals();
-            loadDashboard();
-        }
-    });
-    
-    doctorForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const doctorId = document.getElementById('doctor-id').value;
-        const doctorData = {
-            name: document.getElementById('doctor-name').value,
-            specialization: document.getElementById('doctor-specialization').value,
-            email: document.getElementById('doctor-email').value,
-        };
+        resetDoctorView() {
+            this.elements.welcomeView.classList.remove('hidden');
+            this.elements.doctorRecommendationsView.classList.add('hidden');
+            state.recommendedDoctors = [];
+            this.updateDashboardStats(); // Reset stats to overall view
+        },
         
-        const method = doctorId ? 'PUT' : 'POST';
-        const endpoint = doctorId ? `/doctors/${doctorId}/` : '/doctors/';
+        openModal(modalElement) {
+            modalElement.classList.remove('hidden');
+            modalElement.classList.add('flex');
+        },
 
-        const result = await apiRequest(endpoint, method, doctorData);
-        if (result) {
-            closeAllModals();
-            loadDashboard();
+        closeModal(modalElement) {
+            modalElement.classList.add('hidden');
+            modalElement.classList.remove('flex');
         }
-    });
+    };
 
-    logoutButton.addEventListener('click', handleLogout);
-
-    function toggleAuthForms() {
-        const isLogin = registerForm.classList.contains('hidden');
-        if (isLogin) {
-            loginForm.classList.add('hidden');
-            registerForm.classList.remove('hidden');
-            document.getElementById('auth-title').textContent = 'Create Account';
-            document.getElementById('auth-subtitle').textContent = 'Get started with a new account.';
-            toggleAuthLink.textContent = 'Already have an account? Login';
-        } else {
-            loginForm.classList.remove('hidden');
-            registerForm.classList.add('hidden');
-            document.getElementById('auth-title').textContent = 'Login';
-            document.getElementById('auth-subtitle').textContent = 'Welcome back!';
-            toggleAuthLink.textContent = "Don't have an account? Register";
-        }
-    }
-    toggleAuthLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        toggleAuthForms();
-    });
-    
-    // --- Modal Handling ---
-    function closeAllModals() {
-        patientModal.classList.add('hidden');
-        doctorModal.classList.add('hidden');
-    }
-
-    addPatientBtn.addEventListener('click', () => {
-        patientForm.reset();
-        document.getElementById('patient-id').value = '';
-        document.getElementById('patient-modal-title').textContent = 'Add New Patient';
-        patientModal.classList.remove('hidden');
-    });
-
-    addDoctorBtn.addEventListener('click', () => {
-        doctorForm.reset();
-        document.getElementById('doctor-id').value = '';
-        document.getElementById('doctor-modal-title').textContent = 'Add New Doctor';
-        doctorModal.classList.remove('hidden');
-    });
-
-    document.querySelectorAll('.cancel-modal-btn').forEach(btn => {
-        btn.addEventListener('click', closeAllModals);
-    });
-
-    // --- Dynamic Event Listeners for Edit/Delete ---
-    document.body.addEventListener('click', async (e) => {
-        // Edit Patient
-        if (e.target.classList.contains('edit-patient-btn')) {
-            const id = e.target.dataset.id;
-            const patient = patientsData.find(p => p.id == id);
-            if (patient) {
-                document.getElementById('patient-id').value = patient.id;
-                document.getElementById('patient-name').value = patient.name;
-                document.getElementById('patient-age').value = patient.age;
-                document.getElementById('patient-gender').value = patient.gender;
-                document.getElementById('patient-address').value = patient.address;
-                document.getElementById('patient-modal-title').textContent = 'Edit Patient';
-                patientModal.classList.remove('hidden');
+    // Main Application Logic
+    const App = {
+        async init() {
+            this.setupEventListeners();
+            if (state.token) {
+                ui.showDashboard(true);
+                await this.loadInitialData();
+            } else {
+                ui.showDashboard(false);
             }
-        }
-        // Delete Patient
-        if (e.target.classList.contains('delete-patient-btn')) {
-            const id = e.target.dataset.id;
-            if (confirm('Are you sure you want to delete this patient?')) {
-                const result = await apiRequest(`/patients/${id}/`, 'DELETE');
-                loadDashboard();
-            }
-        }
-        // Edit Doctor
-        if (e.target.classList.contains('edit-doctor-btn')) {
-            const id = e.target.dataset.id;
-            const doctor = doctorsData.find(d => d.id == id);
-            if (doctor) {
-                document.getElementById('doctor-id').value = doctor.id;
-                document.getElementById('doctor-name').value = doctor.name;
-                document.getElementById('doctor-specialization').value = doctor.specialization;
-                document.getElementById('doctor-email').value = doctor.email;
-                document.getElementById('doctor-modal-title').textContent = 'Edit Doctor';
-                doctorModal.classList.remove('hidden');
-            }
-        }
-        // Delete Doctor
-        if (e.target.classList.contains('delete-doctor-btn')) {
-            const id = e.target.dataset.id;
-            if (confirm('Are you sure you want to delete this doctor?')) {
-                await apiRequest(`/doctors/${id}/`, 'DELETE');
-                loadDashboard();
-            }
-        }
-    });
+        },
 
-    // --- Initial Load ---
-    loadDashboard();
+        async loadInitialData() {
+            try {
+                const [patientsResponse, doctorsResponse] = await Promise.all([api.getPatients(), api.getDoctors()]);
+                state.patients = patientsResponse.results || [];
+                state.allDoctors = doctorsResponse || [];
+                ui.renderPatients();
+                ui.updateDashboardStats();
+            } catch (error) {
+                ui.showToast('Error loading initial data.', 'error');
+            }
+        },
+
+        setupEventListeners() {
+            ui.elements.loginForm.addEventListener('submit', this.handleLogin);
+            ui.elements.registerForm.addEventListener('submit', this.handleRegister);
+            ui.elements.logoutButton.addEventListener('click', this.handleLogout);
+            ui.elements.toggleAuthLink.addEventListener('click', (e) => { e.preventDefault(); ui.toggleAuthForms(); });
+            ui.elements.addPatientBtn.addEventListener('click', () => ui.openModal(ui.elements.addPatientModal));
+            ui.elements.patientForm.addEventListener('submit', this.handleAddPatient);
+            ui.elements.symptomForm.addEventListener('submit', this.handleSymptomCheck);
+            ui.elements.assignFromDoctorBtn.addEventListener('click', this.handleAssignFromDoctor);
+            ui.elements.resetViewBtn.addEventListener('click', () => ui.resetDoctorView()); // New listener
+            document.querySelectorAll('.cancel-modal-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => ui.closeModal(e.target.closest('.fixed.inset-0')));
+            });
+        },
+
+        setupPatientCardListeners() {
+            document.querySelectorAll('.assign-btn').forEach(btn => btn.addEventListener('click', this.handleOpenAssignModal));
+            document.querySelectorAll('.unassign-btn').forEach(btn => btn.addEventListener('click', this.handleUnassign));
+            document.querySelectorAll('.patient-name').forEach(nameEl => nameEl.addEventListener('click', this.handleOpenPatientDetail));
+        },
+        
+        setupDoctorCardListeners() {
+            document.querySelectorAll('.doctor-name').forEach(nameEl => nameEl.addEventListener('click', this.handleOpenDoctorDetail));
+        },
+
+        async handleLogin(e) {
+            e.preventDefault();
+            const username = ui.elements.loginForm.querySelector('#login-username').value;
+            const password = ui.elements.loginForm.querySelector('#login-password').value;
+            try {
+                const data = await api.login(username, password);
+                state.token = data.access;
+                localStorage.setItem('accessToken', state.token);
+                ui.showDashboard(true);
+                await App.loadInitialData();
+            } catch (error) {
+                ui.showToast('Login failed: ' + (error.detail || 'Unknown error'), 'error');
+            }
+        },
+
+        async handleRegister(e) {
+            e.preventDefault();
+            const username = ui.elements.registerForm.querySelector('#reg-username').value;
+            const email = ui.elements.registerForm.querySelector('#reg-email').value;
+            const password = ui.elements.registerForm.querySelector('#reg-password').value;
+            const userData = { username, email, password };
+            try {
+                await api.register(userData);
+                ui.showToast('Registration successful! Please login.');
+                ui.toggleAuthForms();
+            } catch (error) {
+                ui.showToast('Registration failed: ' + JSON.stringify(error), 'error');
+            }
+        },
+        
+        handleLogout() {
+            state.token = null;
+            localStorage.removeItem('accessToken');
+            location.reload();
+        },
+        
+        async handleAddPatient(e) {
+            e.preventDefault();
+            const newPatient = {
+                name: ui.elements.patientForm.querySelector('#patient-name').value,
+                age: ui.elements.patientForm.querySelector('#patient-age').value,
+                gender: ui.elements.patientForm.querySelector('#patient-gender').value,
+                phone: ui.elements.patientForm.querySelector('#patient-phone').value,
+                address: ui.elements.patientForm.querySelector('#patient-address').value,
+            };
+            try {
+                await api.addPatient(newPatient);
+                ui.closeModal(ui.elements.addPatientModal);
+                ui.showToast('Patient added successfully.');
+                await App.loadInitialData();
+            } catch (error) {
+                ui.showToast('Error adding patient.', 'error');
+            }
+        },
+
+        async handleSymptomCheck(e) {
+            e.preventDefault();
+            const symptoms = ui.elements.symptomForm.elements['symptoms-input'].value;
+            if (!symptoms.trim()) {
+                ui.showToast('Please describe your symptoms.', 'error');
+                return;
+            }
+            ui.elements.analyzeBtnText.textContent = 'Analyzing...';
+            ui.elements.analyzeSpinner.classList.remove('hidden');
+            try {
+                const data = await api.getRecommendations(symptoms);
+                state.recommendedDoctors = data.recommended_doctors || [];
+                ui.renderRecommendedDoctors();
+                // UPGRADE: Update stats with the filtered list
+                ui.updateDashboardStats(state.recommendedDoctors);
+            } catch (error) {
+                ui.showToast('Error getting recommendation.', 'error');
+            } finally {
+                ui.elements.analyzeBtnText.textContent = 'Analyze & Find Doctor';
+                ui.elements.analyzeSpinner.classList.add('hidden');
+            }
+        },
+        
+        handleOpenAssignModal(e) {
+            const { patientId, patientName } = e.target.dataset;
+            ui.elements.assignDoctorList.innerHTML = '';
+            const doctorsToDisplay = state.recommendedDoctors.length > 0 ? state.recommendedDoctors : state.allDoctors;
+            if (doctorsToDisplay.length === 0) {
+                ui.elements.assignDoctorList.innerHTML = '<p class="text-gray-500">No doctors available.</p>';
+            } else {
+                doctorsToDisplay.forEach(doctor => {
+                    const li = document.createElement('li');
+                    li.className = "doctor-item p-3 border rounded mb-2 cursor-pointer hover:bg-green-100 transition";
+                    li.dataset.id = doctor.id;
+                    li.innerHTML = `<div class="font-bold">${doctor.name}</div><div class="text-sm text-gray-600">${doctor.specialization}</div>`;
+                    li.addEventListener('click', async () => {
+                        try {
+                            await api.createAssignment(patientId, doctor.id);
+                            ui.closeModal(ui.elements.assignDoctorModal);
+                            ui.showToast('Doctor assigned successfully.');
+                            await App.loadInitialData();
+                        } catch (error) {
+                            ui.showToast(error.detail?.non_field_errors?.[0] || 'Error assigning doctor.', 'error');
+                        }
+                    });
+                    ui.elements.assignDoctorList.appendChild(li);
+                });
+            }
+            document.getElementById('assign-patient-name').textContent = patientName;
+            ui.openModal(ui.elements.assignDoctorModal);
+        },
+
+        async handleUnassign(e) {
+            const { assignmentId } = e.target.dataset;
+            if (confirm('Are you sure you want to unassign this doctor?')) {
+                try {
+                    await api.deleteAssignment(assignmentId);
+                    ui.showToast('Doctor unassigned successfully.');
+                    await App.loadInitialData();
+                } catch (error) {
+                    ui.showToast('Error unassigning doctor.', 'error');
+                }
+            }
+        },
+        
+        handleOpenDoctorDetail(e) {
+            const { doctorId } = e.currentTarget.dataset;
+            state.currentDoctorId = doctorId;
+            const doctor = state.allDoctors.find(d => d.id == doctorId);
+            if (!doctor) return;
+            
+            document.getElementById('doctor-detail-name').textContent = doctor.name;
+            document.getElementById('doctor-detail-specialization').textContent = doctor.specialization;
+            document.getElementById('doctor-detail-experience').textContent = doctor.experience_years;
+            document.getElementById('doctor-detail-phone').textContent = doctor.phone || 'N/A';
+            document.getElementById('doctor-detail-email').textContent = doctor.email || 'N/A';
+            
+            ui.elements.patientSelectDropdown.innerHTML = '';
+            if (state.patients.length > 0) {
+                state.patients.forEach(p => {
+                    const option = document.createElement('option');
+                    option.value = p.id;
+                    option.textContent = p.name;
+                    ui.elements.patientSelectDropdown.appendChild(option);
+                });
+            } else {
+                ui.elements.patientSelectDropdown.innerHTML = '<option disabled>No patients available</option>';
+            }
+            ui.openModal(ui.elements.doctorDetailModal);
+        },
+        
+        async handleAssignFromDoctor() {
+            const patientId = ui.elements.patientSelectDropdown.value;
+            if (!patientId || !state.currentDoctorId) {
+                ui.showToast('Please select a patient.', 'error');
+                return;
+            }
+            try {
+                await api.createAssignment(patientId, state.currentDoctorId);
+                ui.closeModal(ui.elements.doctorDetailModal);
+                ui.showToast('Doctor assigned successfully.');
+                await App.loadInitialData();
+            } catch (error) {
+                ui.showToast(error.detail?.non_field_errors?.[0] || 'Error assigning doctor.', 'error');
+            }
+        },
+        
+        handleOpenPatientDetail(e) {
+            const { patientId } = e.currentTarget.dataset;
+            const patient = state.patients.find(p => p.id == patientId);
+            if (!patient) return;
+
+            document.getElementById('patient-detail-name').textContent = patient.name;
+            document.getElementById('patient-detail-age').textContent = patient.age;
+            document.getElementById('patient-detail-gender').textContent = patient.gender === 'M' ? 'Male' : patient.gender === 'F' ? 'Female' : 'Other';
+            document.getElementById('patient-detail-phone').textContent = patient.phone || 'N/A';
+            document.getElementById('patient-detail-address').textContent = patient.address || 'N/A';
+            
+            const assignmentsList = document.getElementById('patient-detail-assignments');
+            assignmentsList.innerHTML = '';
+            if (patient.assignments && patient.assignments.length > 0) {
+                patient.assignments.forEach(a => {
+                    const div = document.createElement('div');
+                    div.className = 'p-2 bg-gray-100 rounded';
+                    div.innerHTML = `<strong>${a.doctor.name}</strong> <span class="text-gray-600">(${a.doctor.specialization})</span>`;
+                    assignmentsList.appendChild(div);
+                });
+            } else {
+                assignmentsList.innerHTML = '<p class="text-gray-500">No assignment history.</p>';
+            }
+            ui.openModal(ui.elements.patientDetailModal);
+        }
+    };
+
+    // --- Initialize the Application ---
+    App.init();
 });

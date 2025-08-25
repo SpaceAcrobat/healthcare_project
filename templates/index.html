@@ -1,26 +1,64 @@
+{% load static %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class=""> <!-- Add class here for dark mode -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Healthcare Management</title>
+    <title>Healthcare Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        // Add this script to apply dark mode instantly, preventing the "flash" of light mode
+        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        .card {
-            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        body { 
+            font-family: 'Inter', sans-serif; 
+            @apply bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200;
+            transition: background-color 0.3s ease, color 0.3s ease;
         }
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        .modal-backdrop { background-color: rgba(0, 0, 0, 0.6); }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border-left-color: #ffffff;
+            animation: spin 1s ease infinite;
         }
-        .modal-backdrop {
-            background-color: rgba(0, 0, 0, 0.5);
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
+        .toast {
+            transform: translateY(100%);
+            opacity: 0;
+            transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        /* Custom dark mode styles for components */
+        .dark .bg-white { @apply bg-gray-800; }
+        .dark .bg-gray-50 { @apply bg-gray-700; }
+        .dark .text-gray-900 { @apply text-white; }
+        .dark .text-gray-500 { @apply text-gray-400; }
+        .dark .border { @apply border-gray-700; }
+        .dark .bg-blue-100 { @apply bg-blue-900; }
+        .dark .text-blue-600 { @apply text-blue-400; }
+        .dark .bg-green-100 { @apply bg-green-900; }
+        .dark .text-green-600 { @apply text-green-400; }
+        .dark .bg-yellow-100 { @apply bg-yellow-900; }
+        .dark .text-yellow-600 { @apply text-yellow-400; }
+        .dark .hover\:bg-gray-50:hover { @apply bg-gray-700; }
     </style>
 </head>
-<body class="bg-gray-100">
+<body class="bg-gray-100 text-gray-800">
 
     <!-- Main Container -->
     <div id="app" class="container mx-auto p-4 md:p-8">
@@ -31,22 +69,17 @@
                 <div class="p-8">
                     <h2 id="auth-title" class="text-center text-3xl font-bold text-gray-800">Login</h2>
                     <p id="auth-subtitle" class="text-center text-gray-500 mt-2">Welcome back!</p>
-                    
-                    <!-- Login Form -->
                     <form id="login-form" class="mt-8 space-y-6">
-                        <input type="text" id="login-username" placeholder="Username" class="w-full p-3 border rounded-md" required>
-                        <input type="password" id="login-password" placeholder="Password" class="w-full p-3 border rounded-md" required>
+                        <input type="text" id="login-username" placeholder="Username" class="w-full p-3 border rounded-md bg-gray-50" required>
+                        <input type="password" id="login-password" placeholder="Password" class="w-full p-3 border rounded-md bg-gray-50" required>
                         <button type="submit" class="w-full py-3 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors font-semibold">Login</button>
                     </form>
-
-                    <!-- Register Form (hidden by default) -->
                     <form id="register-form" class="mt-8 space-y-6 hidden">
-                        <input type="text" id="reg-username" placeholder="Username" class="w-full p-3 border rounded-md" required>
-                        <input type="email" id="reg-email" placeholder="Email" class="w-full p-3 border rounded-md" required>
-                        <input type="password" id="reg-password" placeholder="Password" class="w-full p-3 border rounded-md" required>
+                        <input type="text" id="reg-username" placeholder="Username" class="w-full p-3 border rounded-md bg-gray-50" required>
+                        <input type="email" id="reg-email" placeholder="Email" class="w-full p-3 border rounded-md bg-gray-50" required>
+                        <input type="password" id="reg-password" placeholder="Password" class="w-full p-3 border rounded-md bg-gray-50" required>
                         <button type="submit" class="w-full py-3 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors font-semibold">Create Account</button>
                     </form>
-                    
                     <div class="text-center mt-4">
                         <a href="#" id="toggle-auth" class="text-sm text-indigo-600 hover:underline">Don't have an account? Register</a>
                     </div>
@@ -59,10 +92,53 @@
             <header class="flex justify-between items-center mb-8">
                 <div>
                     <h1 class="text-4xl font-bold text-gray-900">Dashboard</h1>
-                    <p id="welcome-message" class="text-gray-600">Welcome back!</p>
+                    <div class="flex items-center space-x-4 mt-1">
+                        <p id="welcome-message" class="text-gray-600 dark:text-gray-400">Welcome back!</p>
+                        <button id="theme-toggle" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
+                            <svg id="theme-toggle-dark-icon" class="w-5 h-5 hidden" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
+                            <svg id="theme-toggle-light-icon" class="w-5 h-5 hidden" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm-.707 10.607a1 1 0 010-1.414l.707-.707a1 1 0 111.414 1.414l-.707.707a1 1 0 01-1.414 0zM3 11a1 1 0 100 2h1a1 1 0 100-2H3z"></path></svg>
+                        </button>
+                    </div>
                 </div>
                 <button id="logout-button" class="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors">Logout</button>
             </header>
+
+            <!-- Dashboard Summary Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="bg-white p-6 rounded-lg shadow-md flex items-center">
+                    <div class="bg-blue-100 p-3 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg></div>
+                    <div class="ml-4">
+                        <p class="text-gray-500">Total Patients</p>
+                        <p id="total-patients-stat" class="text-2xl font-bold">0</p>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md flex items-center">
+                    <div class="bg-green-100 p-3 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M15 21v-2a4 4 0 00-4-4H9a4 4 0 00-4 4v2" /></svg></div>
+                    <div class="ml-4">
+                        <p class="text-gray-500">Total Doctors</p>
+                        <p id="total-doctors-stat" class="text-2xl font-bold">0</p>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md flex items-center">
+                    <div class="bg-yellow-100 p-3 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg></div>
+                    <div class="ml-4">
+                        <p class="text-gray-500">Assignments</p>
+                        <p id="total-assignments-stat" class="text-2xl font-bold">0</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Symptom Checker Section -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+                <h2 class="text-2xl font-semibold mb-4">AI Doctor Recommendation</h2>
+                <form id="symptom-form">
+                    <textarea id="symptoms-input" rows="3" class="w-full p-3 border rounded-md" placeholder="Describe your symptoms... (e.g., 'chest pain and shortness of breath')"></textarea>
+                    <button type="submit" class="mt-4 w-full md:w-auto px-6 py-3 bg-teal-500 text-white rounded-md hover:bg-teal-600 transition-colors font-semibold flex items-center justify-center">
+                        <span id="analyze-btn-text">Analyze & Find Doctor</span>
+                        <div id="analyze-spinner" class="spinner hidden ml-3"></div>
+                    </button>
+                </form>
+            </div>
 
             <!-- Main Content Grid -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -72,39 +148,43 @@
                         <h2 class="text-2xl font-semibold">My Patients</h2>
                         <button id="add-patient-btn" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">Add Patient</button>
                     </div>
-                    <div id="patients-list" class="space-y-4">
-                        <!-- Patient cards will be inserted here -->
-                    </div>
+                    <div id="patients-list" class="space-y-4"></div>
                 </div>
 
-                <!-- Doctors Section -->
+                <!-- Right Column: Welcome screen OR Doctor List -->
                 <div>
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-2xl font-semibold">Doctors</h2>
-                         <button id="add-doctor-btn" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">Add Doctor</button>
+                    <!-- Welcome Screen / Empty State -->
+                    <div id="welcome-view" class="bg-white p-8 rounded-lg shadow-md text-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                        <h3 class="mt-2 text-xl font-medium text-gray-900">Get Started</h3>
+                        <p class="mt-1 text-gray-500">
+                            Use the AI Symptom Checker to find and display doctor recommendations here.
+                        </p>
                     </div>
-                    <div id="doctors-list" class="space-y-4">
-                        <!-- Doctor cards will be inserted here -->
+
+                    <!-- Doctor Recommendations Section (hidden by default) -->
+                    <div id="doctor-recommendations-view" class="hidden">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-2xl font-semibold">Doctor Recommendations</h2>
+                            <button id="reset-view-btn" class="text-sm text-blue-600 hover:underline">Show All</button>
+                        </div>
+                        <div id="recommended-doctors-list" class="space-y-4 max-h-[60vh] overflow-y-auto"></div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Add/Edit Patient Modal -->
-    <div id="patient-modal" class="fixed inset-0 z-50 items-center justify-center hidden flex modal-backdrop">
+    <!-- Modals -->
+    <div id="add-patient-modal" class="fixed inset-0 z-50 items-center justify-center hidden flex modal-backdrop">
         <div class="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
             <h2 id="patient-modal-title" class="text-2xl font-semibold mb-4">Add New Patient</h2>
             <form id="patient-form" class="space-y-4">
-                <input type="hidden" id="patient-id">
                 <input type="text" id="patient-name" placeholder="Full Name" class="w-full p-3 border rounded-md" required>
                 <input type="number" id="patient-age" placeholder="Age" class="w-full p-3 border rounded-md" required>
-                <select id="patient-gender" class="w-full p-3 border rounded-md bg-white" required>
-                    <option value="M">Male</option>
-                    <option value="F">Female</option>
-                    <option value="O">Other</option>
-                </select>
-                <textarea id="patient-address" placeholder="Address" rows="3" class="w-full p-3 border rounded-md"></textarea>
+                <select id="patient-gender" class="w-full p-3 border rounded-md bg-white" required><option value="M">Male</option><option value="F">Female</option><option value="O">Other</option></select>
+                <input type="text" id="patient-phone" placeholder="Phone Number" class="w-full p-3 border rounded-md">
+                <textarea id="patient-address" placeholder="Address" rows="2" class="w-full p-3 border rounded-md"></textarea>
                 <div class="flex justify-end space-x-4 mt-4">
                     <button type="button" class="cancel-modal-btn px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400">Cancel</button>
                     <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">Save Patient</button>
@@ -113,24 +193,63 @@
         </div>
     </div>
     
-    <!-- Add/Edit Doctor Modal -->
-    <div id="doctor-modal" class="fixed inset-0 z-50 items-center justify-center hidden flex modal-backdrop">
-        <div class="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
-            <h2 id="doctor-modal-title" class="text-2xl font-semibold mb-4">Add New Doctor</h2>
-            <form id="doctor-form" class="space-y-4">
-                <input type="hidden" id="doctor-id">
-                <input type="text" id="doctor-name" placeholder="Full Name" class="w-full p-3 border rounded-md" required>
-                <input type="text" id="doctor-specialization" placeholder="Specialization" class="w-full p-3 border rounded-md" required>
-                <input type="email" id="doctor-email" placeholder="Email" class="w-full p-3 border rounded-md" required>
-                <div class="flex justify-end space-x-4 mt-4">
-                    <button type="button" class="cancel-modal-btn px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400">Cancel</button>
-                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">Save Doctor</button>
-                </div>
-            </form>
+    <div id="assign-doctor-modal" class="fixed inset-0 z-50 items-center justify-center hidden flex modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl p-8 w-full max-w-2xl">
+            <h2 class="text-2xl font-semibold mb-2">Assign Doctor to <span id="assign-patient-name" class="text-indigo-600"></span></h2>
+            <p class="mb-4 text-gray-600">Select a doctor from the list below to assign to this patient.</p>
+            <div id="assign-doctors-list" class="space-y-2 max-h-80 overflow-y-auto"></div>
+            <div class="flex justify-end mt-6">
+                <button type="button" class="cancel-modal-btn px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400">Cancel</button>
+            </div>
         </div>
     </div>
 
+    <!-- Doctor Detail Modal -->
+    <div id="doctor-detail-modal" class="fixed inset-0 z-50 items-center justify-center hidden flex modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
+            <h2 id="doctor-detail-name" class="text-3xl font-bold mb-2"></h2>
+            <p id="doctor-detail-specialization" class="text-lg text-indigo-600 font-semibold mb-4"></p>
+            <div class="space-y-2 text-gray-700">
+                <p><strong>Experience:</strong> <span id="doctor-detail-experience"></span> years</p>
+                <p><strong>Phone:</strong> <span id="doctor-detail-phone"></span></p>
+                <p><strong>Email:</strong> <span id="doctor-detail-email"></span></p>
+            </div>
+            
+            <div class="border-t mt-6 pt-4">
+                <h4 class="text-lg font-semibold mb-2">Assign to Patient</h4>
+                <div id="assign-from-doctor-view" class="space-y-2">
+                    <select id="patient-select-dropdown" class="w-full p-2 border rounded-md bg-white"></select>
+                    <button id="assign-from-doctor-btn" class="w-full py-2 px-4 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors font-semibold">Assign</button>
+                </div>
+            </div>
 
-    <script src="/static/app.js"></script>
+            <div class="flex justify-end mt-6">
+                <button type="button" class="cancel-modal-btn px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Patient Detail Modal -->
+    <div id="patient-detail-modal" class="fixed inset-0 z-50 items-center justify-center hidden flex modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl p-8 w-full max-w-lg">
+            <h2 id="patient-detail-name" class="text-3xl font-bold mb-2"></h2>
+            <p class="text-lg text-gray-600 font-semibold mb-4"><span id="patient-detail-age"></span>, <span id="patient-detail-gender"></span></p>
+            <div class="space-y-2 text-gray-700 mb-6">
+                <p><strong>Phone:</strong> <span id="patient-detail-phone"></span></p>
+                <p><strong>Address:</strong> <span id="patient-detail-address"></span></p>
+            </div>
+            <h3 class="text-xl font-semibold mb-2">Assignment History</h3>
+            <div id="patient-detail-assignments" class="space-y-2 max-h-48 overflow-y-auto"></div>
+            <div class="flex justify-end mt-6">
+                <button type="button" class="cancel-modal-btn px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50"></div>
+
+    <!-- FIX: Use Django's static template tag for robust linking -->
+    <script src="{% static 'app.js' %}"></script>
 </body>
 </html>

@@ -1,48 +1,57 @@
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 from .models import Patient, Doctor, Assignment
 
+User = get_user_model()
+
+
 class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, required=True)
+    password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
 
     class Meta:
         model = User
-        fields = ("username", "email", "password", "first_name", "last_name")
-
-    def validate_password(self, value):
-        validate_password(value)
-        return value
+        fields = ('username', 'email', 'password', 'first_name', 'last_name')
 
     def create(self, validated_data):
-        password = validated_data.pop("password")
-        user = User(**validated_data)
-        user.set_password(password)
-        user.save()
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data['email'],
+            password=validated_data['password'],
+            first_name=validated_data.get('first_name', ''),
+            last_name=validated_data.get('last_name', '')
+        )
         return user
-
-
-class PatientSerializer(serializers.ModelSerializer):
-    owner = serializers.ReadOnlyField(source="owner.username")
-
-    class Meta:
-        model = Patient
-        fields = ("id", "name", "age", "gender", "address", "phone", "owner", "created_at")
-        read_only_fields = ("id", "owner", "created_at")
 
 
 class DoctorSerializer(serializers.ModelSerializer):
     class Meta:
         model = Doctor
-        fields = ("id", "name", "specialization", "experience_years", "phone", "email", "created_at")
-        read_only_fields = ("id", "created_at")
+        fields = ('id', 'name', 'specialization', 'experience_years', 'phone', 'email', 'created_at')
+        read_only_fields = ('id', 'created_at')
 
 
 class AssignmentSerializer(serializers.ModelSerializer):
-    patient_detail = PatientSerializer(source="patient", read_only=True)
-    doctor_detail = DoctorSerializer(source="doctor", read_only=True)
+    # When reading an assignment, we want to see the doctor's details.
+    doctor = DoctorSerializer(read_only=True)
+    
+    # For writing, we only need the IDs.
+    patient_id = serializers.PrimaryKeyRelatedField(queryset=Patient.objects.all(), source='patient', write_only=True)
+    doctor_id = serializers.PrimaryKeyRelatedField(queryset=Doctor.objects.all(), source='doctor', write_only=True)
 
     class Meta:
         model = Assignment
-        fields = ("id", "patient", "doctor", "created_at", "patient_detail", "doctor_detail")
-        read_only_fields = ("id", "created_at")
+        fields = ('id', 'doctor', 'patient_id', 'doctor_id', 'created_at')
+        read_only_fields = ('id', 'created_at')
+
+
+class PatientSerializer(serializers.ModelSerializer):
+    owner = serializers.ReadOnlyField(source='owner.username')
+    # UPGRADE: Nest the assignment data directly within the patient data.
+    # This will show all doctors assigned to this patient.
+    assignments = AssignmentSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Patient
+        fields = ('id', 'name', 'age', 'gender', 'address', 'phone', 'owner', 'created_at', 'assignments')
+        read_only_fields = ('id', 'owner', 'created_at')
