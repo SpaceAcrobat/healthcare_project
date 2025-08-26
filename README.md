@@ -68,9 +68,7 @@ healthcare_project/
 └── db.sqlite3            # Database
 
 ⚡ Installation & Setup
-# Clone repository
-git clone https://github.com/your-username/healocity.git
-cd healocity
+
 
 # Create virtual environment
 python -m venv venv
